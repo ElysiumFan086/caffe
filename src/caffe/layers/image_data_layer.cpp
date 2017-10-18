@@ -172,6 +172,78 @@ void ImageDataLayer<Dtype>::load_batch(Batch<Dtype>* batch) {
   DLOG(INFO) << "Transform time: " << trans_time / 1000 << " ms.";
 }
 
+template <typename Dtype>
+void ImageDataLayer<Dtype>::SetImage(cv::Mat imgmat){
+	CHECK(imgmat.data) << "Could not load mat";
+	// Apply transformations (mirror, crop...) to the image
+	// 	  int offset = batch->data_.offset(item_id);
+	// 	  this->transformed_data_.set_cpu_data(prefetch_data + offset);
+ImageDataParameter image_data_param = this->layer_param_.image_data_param();
+
+	const int new_height = image_data_param.new_height();
+	const int new_width = image_data_param.new_width();
+
+	cv::Mat cv_img = imgmat;
+	if (new_height > 0 && new_width > 0)
+	{
+		cv::resize(cv_img, cv_img, cv::Size(new_width, new_height));
+	}
+	this->InternalThreadEntry(cv_img);
+}
+
+template <typename Dtype>
+void ImageDataLayer<Dtype>::InternalThreadEntry(cv::Mat & cv_img)
+{
+#ifndef CPU_ONLY
+	cudaStream_t stream;
+	if (Caffe::mode() == Caffe::GPU) {
+		CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+	}
+#endif
+	Batch<Dtype>* batch = this->prefetch_free_.pop();
+
+	CHECK(batch->data_.count());
+	CHECK(this->transformed_data_.count());
+	ImageDataParameter image_data_param = this->layer_param_.image_data_param();
+	const int batch_size = image_data_param.batch_size();
+	const int new_height = image_data_param.new_height();
+	const int new_width = image_data_param.new_width();
+	const bool is_color = image_data_param.is_color();
+	string root_folder = image_data_param.root_folder();
+	// Reshape according to the first image of each batch
+	// on single input batches allows for inputs of varying dimension.
+	CHECK(cv_img.data) << "Could not load " << lines_[lines_id_].first;
+	// Use data_transformer to infer the expected blob shape from a cv_img.
+	vector<int> top_shape = this->data_transformer_->InferBlobShape(cv_img);
+	this->transformed_data_.Reshape(top_shape);
+	// Reshape batch according to the batch_size.
+	top_shape[0] = batch_size;
+	batch->data_.Reshape(top_shape);
+
+	Dtype* prefetch_data = batch->data_.mutable_cpu_data();
+	Dtype* prefetch_label = batch->label_.mutable_cpu_data();
+	LOG(ERROR) << "Get data and label from CPU";
+
+	int offset = batch->data_.offset(0);
+	this->transformed_data_.set_cpu_data(prefetch_data + offset);
+	this->data_transformer_->Transform(cv_img, &(this->transformed_data_));
+
+#ifndef CPU_ONLY
+	if (Caffe::mode() == Caffe::GPU) {
+		batch->data_.data().get()->async_gpu_push(stream);
+		CUDA_CHECK(cudaStreamSynchronize(stream));
+	}
+#endif
+	this->prefetch_full_.push(batch);
+
+#ifndef CPU_ONLY
+	if (Caffe::mode() == Caffe::GPU) {
+		CUDA_CHECK(cudaStreamDestroy(stream));
+	}
+#endif
+}
+
+
 INSTANTIATE_CLASS(ImageDataLayer);
 REGISTER_LAYER_CLASS(ImageData);
 
