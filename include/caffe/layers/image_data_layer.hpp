@@ -31,6 +31,9 @@ class ImageDataLayer : public BasePrefetchingDataLayer<Dtype> {
   virtual inline const char* type() const { return "ImageData"; }
   virtual inline int ExactNumBottomBlobs() const { return 0; }
   virtual inline int ExactNumTopBlobs() const { return 2; }
+  
+  void SetImage(cv::Mat imgmat);
+  virtual void InternalThreadEntry(cv::Mat& cv_img);
 
  protected:
   shared_ptr<Caffe::RNG> prefetch_rng_;
