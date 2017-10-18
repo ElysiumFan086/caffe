@@ -810,6 +810,17 @@ message ImageDataParameter {
   // data.
   optional bool mirror = 6 [default = false];
   optional string root_folder = 12 [default = ""];
+  
+  // Affine transform parameters
+	optional bool face_transform = 13 [default = false];
+	optional float max_shear_ratio = 14 [default = 0];
+	optional float max_aspect_ratio = 15 [default = 0];
+	optional float max_rotate_angle = 16 [default = 0];
+	optional float min_random_scale = 17 [default = 1];
+	optional float max_random_scale = 18 [default = 1];
+	optional uint32 max_random_shift = 19 [default = 0];
+	optional bool face_mirror = 20 [default = false];
+	optional uint32 face_point_num = 21 [default = 0];
 }
 
 message InfogainLossParameter {
